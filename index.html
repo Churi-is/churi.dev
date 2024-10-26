@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>churi.dev</title>
+    <style>
+      body, html {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        font-family: "Courier New", monospace;
+        overflow: hidden;
+      }
+
+      #content {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        text-align: center;
+        transform: translateY(-5vh);
+        position: relative;
+        z-index: 1002;
+      }
+
+      h1 {
+        font-size: 3.6em;
+        margin-bottom: 20px;
+        background-color: white !important;
+        padding: 0.2em 0.4em;
+        display: inline;
+        z-index: 1003;
+      }
+    </style>
+  </head>
+  <body>
+    <site-background></site-background>
+    <site-header></site-header>
+    
+    <div id="content">
+      <h1>&lt;/churi.dev&gt;</h1>
+    </div>
+
+    <script src="site-background.js"></script>
+    <script src="site-header.js"></script>
+  </body>
+</html>
