@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoxTerm v1.3</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #d4d4d4;
+            --prompt-color: #6a9955;
+            --input-color: #d4d4d4;
+            --link-color: #569cd6;
+            --highlight-color: #f0db4f;
+            --border-color: #333;
+            --header-bg-color: #383838;
+            --header-text-color: #cccccc;
+            --font-family: 'Consolas', 'Monaco', 'Lucida Console', 'Liberation Mono', 'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', 'Courier New', monospace;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-family);
+            font-size: 15px;
+            line-height: 1.5;
+            margin: 0;
+            padding: 20px 0; /* Add some padding top/bottom for better centering */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        #terminal-window-container {
+            width: 95%;
+            max-width: 1000px;
+            background-color: var(--bg-color); /* Terminal bg for the whole "window" */
+            border: 1px solid var(--border-color);
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
+            border-radius: 10px; /* Rounded corners for the window */
+            overflow: hidden; /* To clip children to rounded corners */
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #header-bar {
+            height: 30px;
+            background-color: var(--header-bg-color);
+            color: var(--header-text-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between; /* Space between title and buttons */
+            padding: 0 10px;
+            border-bottom: 1px solid var(--border-color);
+            user-select: none; /* Prevent text selection in header */
+            flex-shrink: 0; /* Prevent header from shrinking */
+        }
+
+        #header-title-area {
+            flex-grow: 1;
+            text-align: center; /* Center title */
+            font-size: 0.9em;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        
+        #header-buttons {
+            display: flex;
+            align-items: center;
+        }
+
+        .header-button {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-left: 8px; /* Space between buttons */
+            cursor: pointer;
+            border: 1px solid rgba(0,0,0,0.2);
+            box-sizing: border-box;
+        }
+        .header-button:hover {
+            filter: brightness(1.2);
+        }
+
+        .red-button { background-color: #ff5f57; }
+        .yellow-button { background-color: #ffbd2e; }
+        .green-button { background-color: #28c940; }
+
+        #terminal {
+            flex-grow: 1; 
+            height: calc(90vh - 30px - 40px); 
+            max-height: calc(800px - 30px); 
+            min-height: 200px; 
+            background-color: var(--bg-color); 
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; 
+            position: relative; 
+        }
+
+        #output {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+            word-wrap: break-word;
+        }
+
+        #output pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin: 0.5em 0;
+            color: var(--text-color);
+        }
+        
+        #output pre .highlight {
+            color: var(--highlight-color);
+            font-weight: bold;
+        }
+        #output .qr-code-container {
+            background-color: white;
+            padding: 10px;
+            display: inline-block;
+            margin-top: 5px;
+        }
+        #output .qr-code-container img {
+            display: block;
+        }
+        #output .sl-animation-container pre { 
+            margin: 0; 
+            line-height: 1.1;
+        }
+
+        .prompt {
+            color: var(--prompt-color);
+            font-weight: bold;
+        }
+
+        #input-line {
+            display: flex;
+            align-items: center;
+            padding: 8px 15px;
+            background-color: rgba(0,0,0,0.25);
+            border-top: 1px solid var(--border-color);
+            flex-shrink: 0; 
+        }
+
+        #command-input {
+            flex-grow: 1;
+            background-color: transparent;
+            border: none;
+            color: var(--input-color);
+            font-family: var(--font-family);
+            font-size: 15px;
+            outline: none;
+            padding-left: 8px;
+        }
+        
+        a {
+            color: var(--link-color);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .error { color: #f44336; font-weight: bold; }
+        .success { color: #4CAF50; }
+        .info { color: #2196F3; }
+        .warning { color: #FFC107; }
+
+        #bsod-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #0000AA;
+            color: #FFFFFF;
+            font-family: 'Lucida Console', 'Courier New', monospace;
+            font-size: 18px;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 1000;
+            display: none;
+            text-align: center;
+        }
+        #bsod-overlay p {
+            margin: 10px 0;
+        }
+        #bsod-overlay .bsod-header {
+            background-color: #CCCCCC;
+            color: #0000AA;
+            padding: 2px 5px;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        #terminal-closed-message {
+            color: var(--text-color);
+            font-family: var(--font-family);
+            padding: 50px 20px;
+            text-align: center;
+            flex-grow: 1;
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal-window-container">
+        <div id="header-bar">
+            <div id="header-title-area">
+                <span id="header-title">FoxTerm v1.3 - 00:00:00</span>
+            </div>
+            <div id="header-buttons">
+                <span class="header-button green-button" title="Maximize (decorative)"></span>
+                <span class="header-button yellow-button" title="Minimize (decorative)"></span>
+                <span class="header-button red-button" title="Close Terminal"></span>
+            </div>
+        </div>
+        <div id="terminal">
+            <div id="output"></div>
+            <div id="input-line">
+                <span class="prompt">~> </span>
+                <input type="text" id="command-input" autofocus autocomplete="off">
+            </div>
+            <div id="bsod-overlay">
+                <p class="bsod-header">Windows</p>
+                <p>A fatal exception 0E has occurred at 0137:BFF00E22. The current application will be terminated.</p>
+                <p>* Press any key to terminate the current application.</p>
+                <p>* Press CTRL+ALT+DEL again to restart your computer. You will lose any unsaved information in all applications.</p>
+                <p><br>Press any key to continue _</p>
+            </div>
+        </div>
+        <div id="terminal-closed-message" style="display:none;">
+            Terminal closed. Please refresh the page to reopen.
+        </div>
+    </div>
+
+    <!-- External command scripts will be loaded here -->
+    <script src="utils/storage.js"></script> <!-- ADDED: Load storage utility first -->
+
+    <script>
+        const terminalWindowContainer = document.getElementById('terminal-window-container');
+        const headerTitle = document.getElementById('header-title');
+        const terminalDiv = document.getElementById('terminal');
+        const terminalClosedMessageDiv = document.getElementById('terminal-closed-message');
+        const outputDiv = document.getElementById('output');
+        const commandInput = document.getElementById('command-input');
+        const bsodOverlay = document.getElementById('bsod-overlay');
+        
+        const openWeatherApiKey = "b605460a13bc70e84463b90696efa7bd"; // Replace with your actual key if needed
+        const terminalVersion = "v1.3";
+        
+        // Initialize with defaults, will be overwritten by localStorage if available
+        let commandHistory = [];
+        let historyIndex = -1; // Will be set after loading history
+        let currentPath = "~";
+        let aliases = {
+            'cls': 'clear',
+            'time': 'date',
+            'refresh': 'reload',
+            'aliases': 'alias', 
+            'bluescreen': 'bsod',
+            'sysinfo': 'neofetch'
+        };
+        let envVars = {
+            "USER": "guest",
+            "HOSTNAME": "web-terminal",
+            "SHELL": "foxterm.js",
+            "PATH": "/bin:/usr/bin:/local/bin",
+            "LANG": navigator.language || "en-US",
+            "TERM_VERSION": terminalVersion,
+            "HEADER_TITLE_TEXT": "FoxTerm",
+            "HEADER_SHOW_VERSION": "true",
+            "HEADER_SHOW_TIME": "true",
+            "PROMPT_STRING_FORMAT": "{path}>", // {path} will be replaced by currentPath
+            "DEFAULT_AUTORUN_COMMANDS_LIST": "welcome,shortcuts"
+        };
+        let currentThemeName = 'default'; // Will be loaded
+        
+        // Default autorun commands will be initialized using envVars.DEFAULT_AUTORUN_COMMANDS_LIST later
+        // let autorunCommands = ['welcome', 'shortcuts']; // Default autorun commands
+        let autorunCommands = []; 
+
+        // Pre-populate common aliases for commands that will be externalized
+        // These are now part of the default 'aliases' object above.
+        // aliases['cls'] = 'clear';
+        // aliases['time'] = 'date';
+        // aliases['refresh'] = 'reload';
+        // aliases['aliases'] = 'alias'; 
+        // aliases['bluescreen'] = 'bsod';
+        // aliases['sysinfo'] = 'neofetch'; // For external 'neofetch'
+
+        // --- Utility Functions ---
+        function escapeHTML(text) {
+            if (typeof text !== 'string') return text;
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        function interpolateEnvVars(text) {
+            if (typeof text !== 'string') return text;
+            return text.replace(/\$([A-Z_]+[A-Z0-9_]*)/gi, (match, varName) => {
+                return envVars[varName.toUpperCase()] !== undefined ? envVars[varName.toUpperCase()] : match; 
+            }).replace(/\$\{(.+?)\}/gi, (match, varName) => {
+                return envVars[varName.toUpperCase()] !== undefined ? envVars[varName.toUpperCase()] : match;
+            });
+        }
+        
+        async function fetchWeather(city = null, isMotdCall = false) { 
+            let url; let initialErrorContext = "";
+            if (city) { url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${openWeatherApiKey}&units=metric`; initialErrorContext = `for city "${city}"`;
+            } else if (navigator.geolocation) {
+                try { const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, {timeout: 7000}));
+                    url = `https://api.openweathermap.org/data/2.5/weather?lat=${position.coords.latitude}&lon=${position.coords.longitude}&appid=${openWeatherApiKey}&units=metric`; initialErrorContext = "using geolocation";
+                } catch (error) { initialErrorContext = `(geolocation failed: ${error.message})`;
+                    if (isMotdCall) { url = `https://api.openweathermap.org/data/2.5/weather?q=London&appid=${openWeatherApiKey}&units=metric`; initialErrorContext = "for London (fallback due to geolocation failure)";
+                    } else { return `<span class="error">Failed to fetch weather: Geolocation permission denied or timed out.</span>`; }
+                }
+            } else { initialErrorContext = "(geolocation not supported)";
+                if (isMotdCall) { url = `https://api.openweathermap.org/data/2.5/weather?q=London&appid=${openWeatherApiKey}&units=metric`; initialErrorContext = "for London (fallback due to no geolocation support)";
+                } else { return `<span class="error">Failed to fetch weather: Geolocation not supported. Try 'weather city_name'.</span>`;}
+            }
+            try { const response = await fetch(url);
+                if (!response.ok) { const errorData = await response.json().catch(() => ({ message: "Unknown API error" })); const apiMessage = errorData && errorData.message ? ` (API: ${errorData.message})` : ''; throw new Error(`HTTP error! status: ${response.status}${apiMessage}`); }
+                const data = await response.json();
+                return `Weather in <span class="highlight">${data.name}</span>:
+  ${data.weather[0].main} (${data.weather[0].description})
+  Temperature: ${data.main.temp}°C (Feels like: ${data.main.feels_like}°C)
+  Humidity: ${data.main.humidity}%  |  Wind: ${data.wind.speed} m/s`;
+            } catch (error) { return `<span class="error">Failed to fetch weather ${initialErrorContext}: ${error.message}</span>`; }
+        }
+
+        async function fetchJapaneseWord(level = null, isMotdCall = false) { 
+            let url = 'https://jlpt-vocab-api.vercel.app/api/words/random'; let levelInfo = ""; let requestedLevel = level;
+            if (level && !isNaN(parseInt(level)) && level >= 1 && level <= 5) { url += `?level=${level}`; levelInfo = ` (N${level})`; }
+            try { let response = await fetch(url); let word = await response.json();
+                if (!response.ok || !word || !word.word) { let errorReason = `(status: ${response.status}, word: ${JSON.stringify(word).substring(0,50)})`;
+                    if ((requestedLevel || isMotdCall) ) { const fallbackUrl = 'https://jlpt-vocab-api.vercel.app/api/words/random'; response = await fetch(fallbackUrl);
+                        if (!response.ok) throw new Error(`Fallback API call failed, status: ${response.status}`);
+                        word = await response.json(); if (!word || !word.word) throw new Error(`Fallback API also returned no valid word. ${errorReason}`);
+                        levelInfo = ` (N${word.level}, general random)`; if(requestedLevel) levelInfo += ` - requested N${requestedLevel} unavailable`;
+                    } else { throw new Error(`API returned no valid word ${errorReason}.`); }
+                } else if (!levelInfo && word.level) { levelInfo = ` (N${word.level})`; }
+                return `JLPT Word of the Moment${levelInfo}:
+  <span class="highlight" style="font-size: 1.2em;">${word.word}</span> ${word.furigana ? `(${word.furigana})` : ''}  [${word.romaji}]
+  Meaning: ${word.meaning}`;
+            } catch (error) { return `<span class="error">Failed to fetch Japanese word${levelInfo}: ${error.message}</span>`; }
+        }
+
+
+        // Command context accessible by external commands
+        const commandServices = {
+            envVars: envVars, 
+            aliases: aliases, 
+            interpolateEnvVars: (text) => interpolateEnvVars(text),
+            escapeHTML: escapeHTML, // Utility for external commands
+            displayUsageError: function(usageString, displayFn) { // Utility for external commands
+                displayFn(`<pre class='error'>Usage: ${escapeHTML(usageString)}</pre>`);
+            },
+            crypto: crypto,
+            QRCode: typeof QRCode !== 'undefined' ? QRCode : null,
+            fetch: fetch.bind(window), 
+            window: window,
+            commandInput: commandInput,
+            outputDiv: outputDiv, 
+            currentPath: () => currentPath, 
+            setCurrentPathAndPrompt: (newPathStr) => {
+                currentPath = newPathStr || "~";
+                commandInput.previousElementSibling.textContent = getPromptText(currentPath) + " "; // U+00A0 non-breaking space
+                // Save current path when it's changed by cd command (or others)
+                if (globalThis.FoxTermUtils && globalThis.FoxTermUtils.storage) {
+                    globalThis.FoxTermUtils.storage.saveCurrentPath(currentPath);
+                }
+            },
+            mockFileSystem: () => mockFileSystem, 
+            mockFileContents: () => mockFileContents, 
+            // themes: () => themes, // Will be passed directly after initialization
+            manPages: () => manPages, 
+            bsodOverlay: bsodOverlay,
+            getCommandHistory: () => commandHistory,
+            fetchWeather: (city = null, isMotdCall = false) => fetchWeather(city, isMotdCall),
+            fetchJapaneseWord: (level = null, isMotdCall = false) => fetchJapaneseWord(level, isMotdCall),
+            // Storage utility and theme functions will be added after they are defined/loaded
+            FoxTermUtils: globalThis.FoxTermUtils, // Expose all utils
+        };
+
+
+        const themes = {
+            default: {
+                '--bg-color': '#1e1e1e', '--text-color': '#d4d4d4', '--prompt-color': '#6a9955',
+                '--input-color': '#d4d4d4', '--link-color': '#569cd6', '--highlight-color': '#f0db4f', 
+                '--border-color': '#333', '--header-bg-color': '#383838', '--header-text-color': '#cccccc'
+            },
+            matrix: {
+                '--bg-color': '#000000', '--text-color': '#00FF00', '--prompt-color': '#00FF00',
+                '--input-color': '#00FF00', '--link-color': '#33FF33', '--highlight-color': '#FFFF00', 
+                '--border-color': '#003300', '--header-bg-color': '#001a00', '--header-text-color': '#00cc00'
+            },
+            light: {
+                '--bg-color': '#f0f0f0', '--text-color': '#333333', '--prompt-color': '#006400',
+                '--input-color': '#333333', '--link-color': '#0000FF', '--highlight-color': '#FF8C00', 
+                '--border-color': '#cccccc', '--header-bg-color': '#e0e0e0', '--header-text-color': '#222222'
+            }
+        };
+
+        const mockFileSystem = {
+            "~": ["notes.txt", "projects", "images", "README.md"],
+            "~/projects": ["old_project", "new_idea.md", "web-terminal-clone"],
+            "~/images": ["cat.jpg", "sunset.png"]
+        };
+
+        const mockFileContents = {
+            "~/notes.txt": "Remember to buy milk.\nFinish this terminal project!\nAdd more features.\n- Alias expansion\n- Env var interpolation",
+            "~/projects/new_idea.md": "# New Idea\nThis could be revolutionary...\nMaybe a self-hosting terminal page?",
+            "~/projects/web-terminal-clone/README.md": "Source code for this amazing terminal.",
+            "~/images/cat.jpg": "Meow! (Imagine a cute cat ASCII art here)",
+            "~/images/sunset.png": "A beautiful pixelated sunset...",
+            "~/README.md": `
+# Welcome to Your Terminal Homepage!
+This is a mock file system. You can use 'ls', 'cd', and 'cat'.
+Try 'help' for a list of all commands.
+Your current user: $USER
+Terminal Version: $TERM_VERSION
+            `
+        };
+
+        const manPages = { 
+            "help": "help\n\nNAME\n    help - Display information about builtin commands.\n\nSYNOPSIS\n    help [pattern...]\n\nDESCRIPTION\n    Displays brief summaries of builtin commands. If PATTERN is\n    specified, gives detailed help on all commands matching PATTERN,\n    otherwise the list of help topics is printed.",
+            // Add man pages for new commands if they are simple enough to be here
+            // or ensure they are in their respective JS files.
+            // 'autorun' command will have its own manPage property.
+        };
+
+        if (!globalThis.FoxTermCommands) {
+            globalThis.FoxTermCommands = {};
+        }
+
+        function updateHeaderTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            let titleParts = [];
+            if (envVars.HEADER_TITLE_TEXT) {
+                titleParts.push(envVars.HEADER_TITLE_TEXT);
+            }
+            if (envVars.HEADER_SHOW_VERSION === "true" && terminalVersion) {
+                titleParts.push(terminalVersion);
+            }
+            if (envVars.HEADER_SHOW_TIME === "true" && timeString) {
+                titleParts.push(timeString);
+            }
+            headerTitle.textContent = titleParts.join(' - ');
+        }
+        
+        function setupHeaderButtons() {
+            document.querySelector('.red-button').addEventListener('click', () => {
+                terminalDiv.style.display = 'none';
+                terminalClosedMessageDiv.style.display = 'block';
+            });
+            document.querySelector('.yellow-button').addEventListener('click', () => displayOutput("<pre>Minimize button clicked (decorative for now).</pre>"));
+            document.querySelector('.green-button').addEventListener('click', () => displayOutput("<pre>Maximize button clicked (decorative for now).</pre>"));
+        }
+
+        function getPromptText(pathStr) {
+            const format = envVars.PROMPT_STRING_FORMAT || "{path}>";
+            return format.replace("{path}", pathStr);
+        }
+
+        function displayOutput(htmlOrText, isCommand = false, prefix = null) {
+            const div = document.createElement('div');
+            if (isCommand) {
+                div.innerHTML = `<span class="prompt">${escapeHTML(prefix || getPromptText(currentPath))} </span>`; // Non-breaking space
+                const commandSpan = document.createElement('span');
+                commandSpan.textContent = htmlOrText; // Safely display the command string as text
+                div.appendChild(commandSpan);
+            } else {
+                div.innerHTML = htmlOrText; // Assumes htmlOrText is pre-formatted or safe HTML
+            }
+            outputDiv.appendChild(div);
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+        
+        // --- Theme Application Function ---
+        function applyTheme(themeName, displayOutputFnForMessage) {
+            const theme = themes[themeName];
+            if (theme) {
+                for (const [key, value] of Object.entries(theme)) {
+                    document.documentElement.style.setProperty(key, value);
+                }
+                currentThemeName = themeName; // Update global tracker
+                if (globalThis.FoxTermUtils && globalThis.FoxTermUtils.storage) {
+                    globalThis.FoxTermUtils.storage.saveCurrentTheme(themeName);
+                }
+                if (displayOutputFnForMessage) displayOutputFnForMessage(`<pre>Theme set to: ${escapeHTML(themeName)}</pre>`);
+                return true;
+            } else {
+                if (displayOutputFnForMessage) displayOutputFnForMessage(`<pre class='error'>Theme '${escapeHTML(themeName)}' not found.</pre>`);
+                return false;
+            }
+        }
+
+
+        async function executeWelcomeCommand() { 
+            const asciiArt = `
+<pre>
+ _____   ___   __ __  ______    ___  ____   ___ ___ 
+|     | /   \\ |  |  ||      |  /  _]|    \\ |   |   |
+|   __||     ||  |  ||      | /  [_ |  D  )| _   _ |
+|  |_  |  O  ||_   _||_|  |_||    _]|    / |  \\_/  |
+|   _] |     ||     |  |  |  |   [_ |    \\ |   |   |
+|  |   |     ||  |  |  |  |  |     ||  .  \\|   |   |
+|__|    \\___/ |__|__|  |__|  |_____||__|\\_||___|___|
+                                                    
+   FoxTerm ${terminalVersion}
+</pre>`;
+            displayOutput(asciiArt.trim()); 
+            displayOutput("<pre>Initializing system... please wait.</pre>");
+            const results = await Promise.allSettled([ fetchWeather(null, true), fetchJapaneseWord(null, true) ]);
+            const weatherResult = results[0]; const jpWordResult = results[1];
+            if (weatherResult.status === 'fulfilled') { displayOutput(`<pre>${weatherResult.value}</pre>`);
+            } else { displayOutput(`<pre><span class="error">Weather Update Error: ${weatherResult.reason.message || weatherResult.reason}</span></pre>`); }
+            if (jpWordResult.status === 'fulfilled') { displayOutput(`<pre>${jpWordResult.value}</pre>`);
+            } else { displayOutput(`<pre><span class="error">Japanese Word Error: ${jpWordResult.reason.message || jpWordResult.reason}</span></pre>`); }
+            displayOutput(`System ready. Current user: ${envVars.USER}`);
+        }
+
+        // --- Built-in Commands (only 'help' remains here) ---
+        const builtInCommands = {
+            help: {
+                description: "Show this help message.",
+                usage: "help [command_name]",
+                execute: (args) => { 
+                    if (args.length > 0) { 
+                        const cmdName = args[0].toLowerCase();
+                        let found = false;
+
+                        if (globalThis.FoxTermCommands && globalThis.FoxTermCommands[cmdName]) {
+                            const extCmd = globalThis.FoxTermCommands[cmdName];
+                            if (extCmd.manPage) displayOutput(`<pre>${escapeHTML(extCmd.manPage)}</pre>`);
+                            else displayOutput(`<pre>Command: ${escapeHTML(extCmd.name)}\nUsage: ${escapeHTML(extCmd.usage || extCmd.name)}\nDescription: ${escapeHTML(extCmd.description || 'No description available.')}</pre>`);
+                            found = true;
+                        }
+                        
+                        if (!found && builtInCommands[cmdName]) {
+                             if (builtInCommands[cmdName].manPage) displayOutput(`<pre>${escapeHTML(builtInCommands[cmdName].manPage)}</pre>`);
+                             else if (manPages[cmdName]) displayOutput(`<pre>${escapeHTML(manPages[cmdName])}</pre>`);
+                             else if (builtInCommands[cmdName].usage) displayOutput(`<pre>Usage: ${escapeHTML(builtInCommands[cmdName].usage)}\nDescription: ${escapeHTML(builtInCommands[cmdName].description)}</pre>`);
+                            found = true;
+                        }
+                        
+                        if (!found) displayOutput(`<pre>No help available for '${escapeHTML(cmdName)}'. Type 'help' for all commands.</pre>`);
+                        return;
+                    }
+
+                    let helpOutput = `<pre><strong style="color:var(--highlight-color)">FoxTerm ${terminalVersion} - Available Commands:</strong>\n\n`;
+                    helpOutput += "<strong>Built-in Commands:</strong>\n";
+                    for (const cmd in builtInCommands) {
+                        helpOutput += `- <strong>${escapeHTML(cmd)}</strong>: ${escapeHTML(builtInCommands[cmd].description || '')}\n`;
+                    }
+                    helpOutput += "\n<strong>External Commands:</strong>\n";
+                    if (globalThis.FoxTermCommands && Object.keys(globalThis.FoxTermCommands).length > 0) {
+                        const sortedExternalCommands = Object.values(globalThis.FoxTermCommands).sort((a,b) => a.name.localeCompare(b.name));
+                        for (const extCmd of sortedExternalCommands) {
+                            helpOutput += `- <strong>${escapeHTML(extCmd.name)}</strong>: ${escapeHTML(extCmd.description || '')}\n`;
+                        }
+                    } else {
+                        helpOutput += " (No external commands loaded)\n";
+                    }
+                    helpOutput += "\nType 'man {command_name}' or 'help {command_name}' for more details.\n";
+                    helpOutput += "Use Tab for command and path completion.\n";
+                    helpOutput += "Multiple commands can be chained with ';'.\n";
+                    helpOutput += "Aliases can be created with 'alias name=command'.\n";
+                    helpOutput += "Environment variables like $USER are supported.</pre>";
+                    displayOutput(helpOutput);
+                }
+            },
+            welcome: {
+                description: "Display the welcome message.",
+                usage: "welcome",
+                execute: async () => { // Made async
+                    await executeWelcomeCommand();
+                }
+            }
+        };
+
+        // --- Search Command Factory ---
+        function createSearchCommand(config) {
+            return {
+                name: config.name,
+                description: config.description,
+                usage: `${config.name} {search_query}`,
+                execute: function(args, query, displayOutput, services) {
+                    if (!query) { 
+                        services.displayUsageError(this.usage, displayOutput); 
+                        return; 
+                    }
+                    const url = config.urlTemplate.replace('{query}', encodeURIComponent(query));
+                    services.window.open(url, '_blank');
+                    displayOutput(`<pre>Searching ${config.searchService || config.name} for: "${services.escapeHTML(query)}"...</pre>`);
+                }
+            };
+        }
+
+        // --- Define Search Commands using the Factory ---
+        if (!globalThis.FoxTermCommands) globalThis.FoxTermCommands = {};
+        globalThis.FoxTermCommands.g = createSearchCommand({ name: "g", description: "Search Google.", urlTemplate: "https://www.google.com/search?q={query}", searchService: "Google" });
+        globalThis.FoxTermCommands.yt = createSearchCommand({ name: "yt", description: "Search YouTube.", urlTemplate: "https://www.youtube.com/results?search_query={query}", searchService: "YouTube" });
+        globalThis.FoxTermCommands.ddg = createSearchCommand({ name: "ddg", description: "Search DuckDuckGo.", urlTemplate: "https://duckduckgo.com/?q={query}", searchService: "DuckDuckGo" });
+        globalThis.FoxTermCommands.gh = createSearchCommand({ name: "gh", description: "Search GitHub.", urlTemplate: "https://github.com/search?q={query}", searchService: "GitHub" });
+        globalThis.FoxTermCommands.npm = createSearchCommand({ name: "npm", description: "Search NPM.", urlTemplate: "https://www.npmjs.com/search?q={query}", searchService: "NPM" });
+        globalThis.FoxTermCommands.mdn = createSearchCommand({ name: "mdn", description: "Search MDN Web Docs.", urlTemplate: "https://developer.mozilla.org/en-US/search?q={query}", searchService: "MDN" });
+        // --- End Search Commands ---
+
+
+        async function processSingleCommand(commandStr) { // Made async
+            const interpolatedCommandStr = interpolateEnvVars(commandStr);
+            const [commandName, ...args] = interpolatedCommandStr.trim().split(/\s+/);
+            const query = args.join(' '); 
+            const lowerCmdName = commandName ? commandName.toLowerCase() : "";
+
+            if (builtInCommands[lowerCmdName]) {
+                await builtInCommands[lowerCmdName].execute(args, query, displayOutput, commandServices); // Added await and pass services
+            } else if (globalThis.FoxTermCommands && globalThis.FoxTermCommands[lowerCmdName]) {
+                const cmdObj = globalThis.FoxTermCommands[lowerCmdName];
+                // Check if execute is async, though await works on non-async too
+                if (cmdObj.execute.constructor.name === "AsyncFunction") {
+                    await cmdObj.execute(args, query, displayOutput, commandServices);
+                } else {
+                    cmdObj.execute(args, query, displayOutput, commandServices);
+                }
+            } else if (lowerCmdName.trim() !== "") {
+                displayOutput(`<pre>Command not found: ${escapeHTML(commandName)}. Type 'help' for available commands.</pre>`);
+            }
+        }
+        
+        async function processCommand(fullCommandStr, options = {}) { // Made async, added options
+            if (!options.isAutorun) {
+                displayOutput(fullCommandStr, true); 
+            }
+
+            if (!options.isAutorun && fullCommandStr.trim() !== "") {
+                if (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== fullCommandStr) {
+                     commandHistory.push(fullCommandStr);
+                     if (globalThis.FoxTermUtils && globalThis.FoxTermUtils.storage) {
+                         globalThis.FoxTermUtils.storage.saveCommandHistory(commandHistory);
+                     }
+                }
+                historyIndex = commandHistory.length;
+            }
+
+
+            let commandToProcess = fullCommandStr.trim();
+            const firstWord = commandToProcess.split(/\s+/)[0];
+            
+            if (aliases[firstWord]) {
+                const aliasValue = aliases[firstWord];
+                const remainingArgs = commandToProcess.substring(firstWord.length).trim();
+                commandToProcess = `${aliasValue} ${remainingArgs}`.trim();
+                if (!options.isAutorun) { // Only display alias expansion for interactive commands
+                    displayOutput(`<pre class="info">(alias) ${escapeHTML(firstWord)} -> ${escapeHTML(commandToProcess)}</pre>`); 
+                }
+            }
+            
+            const commands = commandToProcess.split(';').map(cmd => cmd.trim()).filter(cmd => cmd !== '');
+            for (const cmd of commands) { // Changed to for...of for await
+                if (cmd) await processSingleCommand(cmd); // Added await
+            }
+        }
+
+        commandInput.addEventListener('keydown', async (e) => { // Made async
+            if (terminalDiv.style.display === 'none') return; 
+
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const commandStr = commandInput.value;
+                commandInput.value = '';
+                if (commandStr.trim() !== "") { 
+                    await processCommand(commandStr); // Added await
+                } else { 
+                    if (terminalDiv.style.display !== 'none') { // Ensure terminal is visible
+                        displayOutput("", true); 
+                    }
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (commandHistory.length > 0 && historyIndex > 0) {
+                    historyIndex--; commandInput.value = commandHistory[historyIndex];
+                    commandInput.setSelectionRange(commandInput.value.length, commandInput.value.length); 
+                } else if (commandHistory.length > 0 && historyIndex === 0) {
+                     commandInput.value = commandHistory[historyIndex];
+                     commandInput.setSelectionRange(commandInput.value.length, commandInput.value.length);
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (historyIndex < commandHistory.length - 1) {
+                    historyIndex++; commandInput.value = commandHistory[historyIndex];
+                    commandInput.setSelectionRange(commandInput.value.length, commandInput.value.length);
+                } else if (historyIndex === commandHistory.length -1) {
+                     historyIndex++; commandInput.value = "";
+                }
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                const currentCmdLine = commandInput.value;
+                const parts = currentCmdLine.split(" ");
+                const cmdNamePart = parts[0].toLowerCase();
+                const lastPart = parts[parts.length - 1];
+                let potentialCompletions = [];
+                
+                const pathCompletionCmds = ['ls', 'cd', 'cat'];
+                const specificArgCompletionCmds = ['man', 'unalias', 'theme'];
+                const tabCompletionSources = {
+                    "man": () => [
+                        ...Object.keys(manPages), 
+                        ...(globalThis.FoxTermCommands ? Object.values(globalThis.FoxTermCommands).filter(c => c.manPage).map(c=>c.name) : [])
+                    ],
+                    "unalias": () => Object.keys(aliases),
+                    "theme": () => Object.keys(themes)
+                };
+
+                if (parts.length === 1) { 
+                    const allCommandNames = [
+                        ...Object.keys(builtInCommands), 
+                        ...(globalThis.FoxTermCommands ? Object.keys(globalThis.FoxTermCommands) : []),
+                        ...Object.keys(aliases) 
+                    ];
+                    potentialCompletions = [...new Set(allCommandNames)].filter(c => c.toLowerCase().startsWith(lastPart.toLowerCase()));
+                } else {
+                    const currentCommandInfo = builtInCommands[cmdNamePart] || (globalThis.FoxTermCommands ? globalThis.FoxTermCommands[cmdNamePart] : null);
+                    const cmdActualName = currentCommandInfo ? (currentCommandInfo.name || cmdNamePart) : null;
+
+                    if (cmdActualName && tabCompletionSources[cmdActualName]) {
+                        const sourceArray = tabCompletionSources[cmdActualName]();
+                        potentialCompletions = sourceArray.filter(item => item.toLowerCase().startsWith(lastPart.toLowerCase()));
+                    } else if (cmdActualName && pathCompletionCmds.includes(cmdActualName)) {
+                        let basePathForTab = currentPath;
+                        let partialToComplete = lastPart;
+                        let pathPrefix = ""; 
+
+                        if (lastPart.startsWith("~/")) {
+                            basePathForTab = "~"; pathPrefix = "~/"; partialToComplete = lastPart.substring(2);
+                        } else if (lastPart.includes("/")) {
+                            const pathParts = lastPart.split("/");
+                            partialToComplete = pathParts.pop() || "";
+                            const parentDirPart = pathParts.join("/");
+                            pathPrefix = parentDirPart ? parentDirPart + "/" : "";
+                            basePathForTab = parentDirPart.startsWith("~/") ? parentDirPart : (parentDirPart ? ((currentPath === "~" ? "~/" : currentPath + "/") + parentDirPart) : basePathForTab);
+                        }
+                        basePathForTab = basePathForTab.replace(/\/$/, '') || "~";
+                        
+                        const dirItems = mockFileSystem[basePathForTab] || [];
+                        const fileContentKeys = Object.keys(mockFileContents)
+                            .filter(f => f.startsWith(basePathForTab === "~" ? "~/" : basePathForTab + "/"))
+                            .map(f => f.substring((basePathForTab === "~" ? "~/" : basePathForTab + "/").length).split('/')[0]);
+                        const sourceArray = [...new Set([...dirItems, ...fileContentKeys])].filter(Boolean);
+                        
+                        potentialCompletions = sourceArray.filter(item => item.toLowerCase().startsWith(partialToComplete.toLowerCase()));
+                        if (potentialCompletions.length > 0 && pathPrefix) {
+                            potentialCompletions = potentialCompletions.map(c => pathPrefix + c);
+                        }
+                    }
+                }
+                
+                if (potentialCompletions.length === 1) {
+                    parts[parts.length - 1] = potentialCompletions[0];
+                    let suffix = " ";
+                    const cmdActualNameForSuffix = (builtInCommands[cmdNamePart] ? cmdNamePart : null) || (globalThis.FoxTermCommands[cmdNamePart] ? globalThis.FoxTermCommands[cmdNamePart].name : null);
+
+                    if (['cd', 'ls'].includes(cmdActualNameForSuffix)) {
+                        let testPath = potentialCompletions[0];
+                        let fullTestPath = testPath;
+                        if (testPath.startsWith("~/")) fullTestPath = testPath.replace(/\/$/,'');
+                        else if (!testPath.includes("/")) fullTestPath = (currentPath === "~" ? "~" : currentPath) + "/" + testPath.replace(/\/$/,'');
+                        fullTestPath = fullTestPath.replace(/\/+/g, '/').replace(/^\//, '~/'); // Normalize
+                        if (mockFileSystem[fullTestPath] && !potentialCompletions[0].endsWith("/")) suffix = "/";
+                    }
+                    commandInput.value = parts.join(" ") + suffix;
+
+                } else if (potentialCompletions.length > 1) {
+                    displayOutput(`<pre>${potentialCompletions.map(c => escapeHTML(c)).join("  ")}</pre>`);
+                }
+            }
+        });
+        
+        document.getElementById('terminal-window-container').addEventListener('click', (event) => {
+            if (terminalDiv.style.display === 'none' || event.target.closest('a, button, input, .header-button') || bsodOverlay.contains(event.target)) {
+                return;
+            }
+            commandInput.focus();
+        });
+
+        window.addEventListener('load', async () => { // Made async
+            // --- Load data from Local Storage ---
+            if (globalThis.FoxTermUtils && globalThis.FoxTermUtils.storage) {
+                const storage = globalThis.FoxTermUtils.storage;
+
+                // Load EnvVars: Merge defaults with stored, stored takes precedence.
+                const defaultEnvVars = { ...envVars }; // Clone initial defaults
+                let loadedEnvVars = storage.loadEnvVars(null);
+                if (loadedEnvVars === null) { // Nothing in storage, use defaults and save
+                    envVars = { ...defaultEnvVars };
+                    storage.saveEnvVars(envVars);
+                } else {
+                    envVars = { ...defaultEnvVars, ...loadedEnvVars };
+                    // Save back if new default keys were added that weren't in stored data
+                    if (Object.keys(envVars).length > Object.keys(loadedEnvVars).length ||
+                        !Object.keys(defaultEnvVars).every(key => loadedEnvVars.hasOwnProperty(key))) {
+                        storage.saveEnvVars(envVars);
+                    }
+                }
+                commandServices.envVars = envVars; // Ensure services has the final version
+
+                // Load Aliases: Merge defaults with stored, stored takes precedence.
+                const defaultAliases = { ...aliases }; // Clone initial defaults
+                let loadedAliases = storage.loadAliases(null);
+                if (loadedAliases === null) {
+                    aliases = { ...defaultAliases };
+                    storage.saveAliases(aliases);
+                } else {
+                    aliases = { ...defaultAliases, ...loadedAliases };
+                     if (Object.keys(aliases).length > Object.keys(loadedAliases).length ||
+                        !Object.keys(defaultAliases).every(key => loadedAliases.hasOwnProperty(key))) {
+                        storage.saveAliases(aliases);
+                    }
+                }
+                commandServices.aliases = aliases; // Ensure services has the final version
+
+                commandHistory = storage.loadCommandHistory([]);
+                historyIndex = commandHistory.length;
+
+                currentPath = storage.loadCurrentPath("~");
+                commandInput.previousElementSibling.textContent = getPromptText(currentPath) + " ";
+                // commandServices.currentPath is a function, so it will get the updated currentPath
+
+                const loadedThemeName = storage.loadCurrentTheme('default');
+                applyTheme(loadedThemeName, null); // Apply loaded theme without message
+
+                // Load autorun commands
+                // Initialize autorunCommands from envVars first, this will be the default for storage.loadAutorunCommands
+                const defaultAutorunStringFromEnv = envVars.DEFAULT_AUTORUN_COMMANDS_LIST || "welcome";
+                const defaultCommandsArray = defaultAutorunStringFromEnv.split(',').map(s => s.trim()).filter(Boolean);
+                
+                const loadedAutorunCommands = storage.loadAutorunCommands(defaultCommandsArray);
+                console.log("Loaded autorun commands:", loadedAutorunCommands);
+                if (Array.isArray(loadedAutorunCommands) && loadedAutorunCommands.every(c => typeof c === 'string')) {
+                    autorunCommands = loadedAutorunCommands;
+                } else {
+                    // If loaded data is invalid, revert to default (from env or hardcoded) and save it.
+                    autorunCommands = [...defaultCommandsArray];
+                    storage.saveAutorunCommands(autorunCommands);
+                }
+            }
+            
+            // Update commandServices with utilities and final data references
+            commandServices.FoxTermUtils = globalThis.FoxTermUtils; // Includes storage
+            commandServices.applyTheme = applyTheme;
+            commandServices.themes = themes; // Pass the themes object itself
+
+            updateHeaderTime();
+            setInterval(updateHeaderTime, 1000);
+            setupHeaderButtons();
+            if (terminalDiv.style.display !== 'none') {
+                commandInput.focus();
+            }
+            // Execute autorun commands
+            if (autorunCommands && autorunCommands.length > 0) {
+                for (const cmdStr of autorunCommands) {
+                    if (typeof cmdStr === 'string' && cmdStr.trim() !== "") {
+                        await processCommand(cmdStr, { isAutorun: true });
+                    }
+                }
+            }
+        });
+
+    </script>
+
+    <!-- Load External Commands -->
+    <!-- Existing external commands (some are now defined in the script above) -->
+    <script src="commands/calc.js"></script>
+    <script src="commands/lorem.js"></script>
+    <script src="commands/passwd.js"></script>
+    <script src="commands/epoch.js"></script>
+    <script src="commands/qr.js"></script>
+    <script src="commands/currency.js"></script>
+    <script src="commands/temp.js"></script>
+    <script src="commands/fortune.js"></script>
+    <script src="commands/sl.js"></script>
+    <script src="commands/chucknorris.js"></script>
+    <script src="commands/figlet.js"></script>
+    <script src="commands/say.js"></script>
+    <script src="commands/fortune.js"></script>
+    <!-- g.js, yt.js, ddg.js, gh.js, npm.js, mdn.js are now inlined via factory -->
+    <script src="commands/cowsay.js"></script>
+    <script src="commands/banner.js"></script>
+    <script src="commands/neofetch.js"></script>
+    <script src="commands/ip.js"></script>
+    <script src="commands/uuid.js"></script>
+    <script src="commands/base64.js"></script>
+    <script src="commands/sudo.js"></script>
+    <script src="commands/whoami.js"></script>
+
+    <!-- Newly externalized built-in commands -->
+    <script src="commands/clear.js"></script>
+    <script src="commands/date.js"></script>
+    <script src="commands/reload.js"></script>
+    <script src="commands/history.js"></script>
+    <script src="commands/man.js"></script>
+    <script src="commands/exit.js"></script>
+    <script src="commands/theme.js"></script>
+    <script src="commands/color.js"></script>
+    <script src="commands/alias.js"></script>
+    <script src="commands/unalias.js"></script>
+    <script src="commands/env.js"></script>
+    <script src="commands/set.js"></script>
+    <script src="commands/unset.js"></script>
+    <script src="commands/echo.js"></script>
+    <script src="commands/ls.js"></script>
+    <script src="commands/cd.js"></script>
+    <script src="commands/cat.js"></script>
+    <script src="commands/pwd.js"></script>
+    <script src="commands/weather.js"></script>
+    <script src="commands/word.js"></script>
+    <script src="commands/bsod.js"></script>
+    <script src="commands/resetstorage.js"></script> <!-- ADDED: New command -->
+    <script src="commands/autorun.js"></script> <!-- ADDED: New autorun command -->
+    <script src="commands/shortcuts.js"></script> <!-- ADDED: New shortcuts command -->
+</body>
+</html>
